@@ -39,6 +39,7 @@ public class EmpireCommands {
 		if (pe == null) { say(c, Text.literal("لا تنتمي لأي إمبراطورية.")); return 0; }
 		Empire e = Empire.get(pe);
 		say(c, Text.literal("إمبراطوريتك: (" + (pe + 1) + ") ").append(EmpireManager.nameOf(e)));
+		say(c, Text.literal("العاصمة: " + e.cx() + ", " + e.cz() + "  |  الحجم: " + e.size() + " بلوك"));
 		say(c, Text.literal("الحلفاء: ").append(EmpireManager.listNames(st.alliesOf(pe))));
 		say(c, Text.literal("الأعداء: ").append(EmpireManager.listNames(st.enemiesOf(pe))));
 		say(c, Text.literal("الأوامر: /empire list | tp | recruit | follow | stay | ally <رقم> | war <رقم> | peace <رقم>"));
@@ -52,7 +53,7 @@ public class EmpireCommands {
 		for (Empire e : Empire.ALL) {
 			String rel = "";
 			if (pe != null) rel = st.areAllies(pe, e.id()) ? "  [حليف]" : st.atWar(pe, e.id()) ? "  [عدو]" : "";
-			say(c, Text.literal((e.id() + 1) + ". ").append(EmpireManager.nameOf(e)).append(Text.literal(rel)));
+			say(c, Text.literal((e.id() + 1) + ". ").append(EmpireManager.nameOf(e)).append(Text.literal(rel + "  [" + e.cx() + ", " + e.cz() + "]  حجم " + e.size())));
 		}
 		return 1;
 	}

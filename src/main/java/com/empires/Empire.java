@@ -1,7 +1,7 @@
 package com.empires;
 
 /** تعريف الإمبراطورية: الاسم واللون وإحداثيات العاصمة (ثابتة لكل عالم). */
-public record Empire(int id, String name, int color, int cx, int cz) {
+public record Empire(int id, String name, int color, int cx, int cz, int size) {
 	public static final String[] NAMES = {
 		"الإمبراطورية الرومانية", "الإمبراطورية الفارسية", "الإمبراطورية العثمانية", "الإمبراطورية المغولية",
 		"الإمبراطورية البيزنطية", "الدولة الأموية", "الدولة العباسية", "الدولة الفاطمية", "الدولة الأيوبية",
@@ -20,13 +20,30 @@ public record Empire(int id, String name, int color, int cx, int cz) {
 
 	static {
 		for (int i = 0; i < COUNT; i++) {
-			// شبكة 8 أعمدة، المسافة 500 بلوك، وكل عاصمة في منتصف تشانك
-			int x = Math.round((i % 8 - 3.5F) * 500F);
-			int z = Math.round((i / 8 - 3F) * 500F);
-			x = ((x >> 4) << 4) + 8;
-			z = ((z >> 4) << 4) + 8;
-			ALL[i] = new Empire(i, NAMES[i], hsv(i / (float) COUNT, 0.85F, 0.9F), x, z);
+			// مواقع مؤقتة؛ المواقع الحقيقية العشوائية تُطبَّق عند بدء العالم (applyLayout)
+			ALL[i] = new Empire(i, NAMES[i], hsv(i / (float) COUNT, 0.85F, 0.9F), 0, 0, 1000);
 		}
+	}
+
+	/** layout = [x0, z0, size0, x1, z1, size1, ...] */
+	public static void applyLayout(int[] l) {
+		for (int i = 0; i < COUNT; i++) {
+			ALL[i] = new Empire(i, NAMES[i], ALL[i].color(), l[i * 3], l[i * 3 + 1], l[i * 3 + 2]);
+		}
+	}
+
+	public int radius() { return size / 2; }
+
+	/** أي إمبراطورية تقع الإحداثيات داخل أراضيها (الأقرب نسبةً لحجمها)، أو null. */
+	public static Empire territoryAt(double x, double z) {
+		Empire best = null;
+		double bs = 1.0;
+		for (Empire e : ALL) {
+			double dx = x - e.cx, dz = z - e.cz;
+			double ratio = Math.sqrt(dx * dx + dz * dz) / (e.size / 2.0);
+			if (ratio < bs) { bs = ratio; best = e; }
+		}
+		return best;
 	}
 
 	public static Empire get(int id) {

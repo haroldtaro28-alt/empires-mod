@@ -17,6 +17,8 @@ public class EmpireState extends PersistentState {
 	public final Set<Integer> built = new HashSet<>();
 	public final Map<Integer, Integer> capY = new HashMap<>();
 	public boolean initialized = false;
+	/** مواقع وأحجام الإمبراطوريات (x, z, size) × 50 */
+	public int[] layout = new int[0];
 
 	public static final PersistentState.Type<EmpireState> TYPE =
 			new PersistentState.Type<>(EmpireState::new, EmpireState::fromNbt, null);
@@ -89,6 +91,7 @@ public class EmpireState extends PersistentState {
 		}
 		nbt.put("capY", cy);
 		nbt.putBoolean("init", initialized);
+		nbt.putIntArray("layout", layout);
 		return nbt;
 	}
 
@@ -108,6 +111,7 @@ public class EmpireState extends PersistentState {
 			s.capY.put(c.getInt("e"), c.getInt("y"));
 		}
 		s.initialized = nbt.getBoolean("init");
+		s.layout = nbt.getIntArray("layout");
 		return s;
 	}
 }

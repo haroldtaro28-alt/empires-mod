@@ -21,6 +21,8 @@ import net.minecraft.util.Formatting;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.world.Heightmap;
+import net.minecraft.world.gen.chunk.ChunkGenerator;
+import net.minecraft.world.gen.noise.NoiseConfig;
 
 import java.util.*;
 
@@ -46,6 +48,18 @@ public class EmpireManager {
 
 	public static void onStart(MinecraftServer server) {
 		EmpireState st = EmpireState.get(server);
+		if (st.layout.length != Empire.COUNT * 3) {
+			// عالم جديد (أو عالم قديم بدون توزيع): نولّد مواقع برّية عشوائية
+			st.layout = generateLayout(server.getOverworld());
+			st.players.clear();
+			st.built.clear();
+			st.capY.clear();
+			st.allies.clear();
+			st.wars.clear();
+			st.initialized = false;
+			st.markDirty();
+		}
+		Empire.applyLayout(st.layout);
 		if (!st.initialized) {
 			Random r = new Random(server.getOverworld().getSeed());
 			for (int i = 0; i < Empire.COUNT; i++) {
@@ -68,6 +82,65 @@ public class EmpireManager {
 			t.setFriendlyFireAllowed(false);
 			t.setDisplayName(Text.literal(e.name()));
 		}
+	}
+
+	// ---------------- توزيع الإمبراطوريات ----------------
+
+	private static final int MIN_DISTANCE = 800;   // أقل مسافة بين عاصمتين
+	private static final int MIN_SIZE = 500;       // أصغر حجم
+	private static final int MAX_SIZE = 3000;      // أكبر حجم
+
+	/** يختار مواقع عشوائية على اليابسة بدون توليد الأرض، بمسافة 800+ بلوك بين العواصم. */
+	private static int[] generateLayout(ServerWorld w) {
+		Random r = new Random(w.getSeed() ^ 0x5DEECE66DL);
+		ChunkGenerator gen = w.getChunkManager().getChunkGenerator();
+		NoiseConfig nc = w.getChunkManager().getNoiseConfig();
+		int[] l = new int[Empire.COUNT * 3];
+		int placed = 0, attempts = 0;
+		double range = 6000;
+		while (placed < Empire.COUNT && attempts < 200000) {
+			attempts++;
+			if (attempts % 4000 == 0) range *= 1.25; // نوسّع المنطقة إذا صعب إيجاد يابسة
+			int x = (((int) ((r.nextDouble() * 2 - 1) * range)) >> 4 << 4) + 8;
+			int z = (((int) ((r.nextDouble() * 2 - 1) * range)) >> 4 << 4) + 8;
+			boolean ok = true;
+			for (int i = 0; i < placed; i++) {
+				long dx = x - l[i * 3], dz = z - l[i * 3 + 1];
+				if (dx * dx + dz * dz < (long) MIN_DISTANCE * MIN_DISTANCE) { ok = false; break; }
+			}
+			if (!ok || !isGoodLand(w, gen, nc, x, z)) continue;
+			l[placed * 3] = x;
+			l[placed * 3 + 1] = z;
+			l[placed * 3 + 2] = MIN_SIZE + r.nextInt(MAX_SIZE - MIN_SIZE + 1);
+			placed++;
+		}
+		while (placed < Empire.COUNT) { // احتياط نادر جداً
+			l[placed * 3] = placed * 1000 + 8;
+			l[placed * 3 + 1] = 8;
+			l[placed * 3 + 2] = MIN_SIZE + r.nextInt(MAX_SIZE - MIN_SIZE + 1);
+			placed++;
+		}
+		return l;
+	}
+
+	private static int floorY(ServerWorld w, ChunkGenerator gen, NoiseConfig nc, int x, int z) {
+		return gen.getHeight(x, z, Heightmap.Type.OCEAN_FLOOR_WG, w, nc);
+	}
+
+	/** يابسة مرتفعة عن البحر (63)، شبه مستوية، وليست جزيرة صغيرة. */
+	private static boolean isGoodLand(ServerWorld w, ChunkGenerator gen, NoiseConfig nc, int x, int z) {
+		if (floorY(w, gen, nc, x, z) < 66) return false;
+		int min = Integer.MAX_VALUE, max = Integer.MIN_VALUE;
+		int[][] pts = {{0, 0}, {-7, -7}, {7, -7}, {-7, 7}, {7, 7}};
+		for (int[] p : pts) {
+			int h = floorY(w, gen, nc, x + p[0], z + p[1]);
+			min = Math.min(min, h);
+			max = Math.max(max, h);
+		}
+		if (min < 66 || max > 140 || max - min > 10) return false;
+		int[][] far = {{40, 0}, {-40, 0}, {0, 40}, {0, -40}};
+		for (int[] p : far) if (floorY(w, gen, nc, x + p[0], z + p[1]) < 64) return false;
+		return true;
 	}
 
 	// ---------------- دخول لاعب ----------------
@@ -135,6 +208,9 @@ public class EmpireManager {
 					+ "  |  جنودك: " + n
 					+ "  |  الجيش: " + (FOLLOWING.contains(p.getUuid()) ? "يتبعك" : "يحرس")
 			).formatted(Formatting.WHITE));
+			Empire terr = Empire.territoryAt(p.getX(), p.getZ());
+			t.append(Text.literal("  |  الأراضي: ").formatted(Formatting.WHITE));
+			t.append(terr == null ? Text.literal("محايدة").formatted(Formatting.GRAY) : nameOf(terr));
 			p.sendMessage(t, true);
 		}
 	}
@@ -171,7 +247,8 @@ public class EmpireManager {
 		}
 		if (!hasPres && waited(w, e.id() * 10 + 2, immediate)) spawn(w, e, 2, e.cx(), y, e.cz() - 2, false, c);
 		if (!hasMin && waited(w, e.id() * 10 + 1, immediate)) spawn(w, e, 1, e.cx() + 2, y, e.cz() - 2, false, c);
-		int toSpawn = Math.min(INITIAL_SOLDIERS - soldiers, immediate ? INITIAL_SOLDIERS : 1);
+		int want = 4 + e.size() / 300; // الإمبراطورية الأكبر عندها حرس أكثر
+		int toSpawn = Math.min(want - soldiers, immediate ? want : 1);
 		for (int i = 0; i < toSpawn; i++) {
 			spawn(w, e, 0, e.cx() + w.random.nextInt(11) - 5, y, e.cz() + 1 + w.random.nextInt(5), false, c);
 		}
@@ -207,7 +284,8 @@ public class EmpireManager {
 			if (pe == null || p.getWorld() != w) continue;
 			Empire mine = Empire.get(pe);
 			double dx = p.getX() - mine.cx(), dz = p.getZ() - mine.cz();
-			if (dx * dx + dz * dz > 250 * 250) continue; // الغارات فقط قرب عاصمتك
+			double rad = Math.max(250, mine.radius());
+			if (dx * dx + dz * dz > rad * rad) continue; // الغارات فقط داخل أراضي إمبراطوريتك
 			List<Integer> enemies = st.enemiesOf(pe);
 			if (enemies.isEmpty()) continue;
 			Empire en = Empire.get(enemies.get(w.random.nextInt(enemies.size())));
