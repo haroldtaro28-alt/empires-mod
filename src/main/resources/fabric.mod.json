@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "empires",
+  "version": "${version}",
+  "name": "Empires & Wars",
+  "description": "50 إمبراطورية، جيوش NPC، تحالفات وحروب، رئيس ووزير لكل إمبراطورية.",
+  "authors": ["You"],
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["com.empires.EmpiresMod"],
+    "client": ["com.empires.client.EmpiresClient"]
+  },
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": "~1.21.1",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}
